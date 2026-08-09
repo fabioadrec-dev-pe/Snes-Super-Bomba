@@ -61,6 +61,7 @@ Valores indisponíveis aparecem em cinza. Ao mudar a dificuldade, a vida
 ## Build (Linux)
 
 ```bash
+unzip modelo.zip
 ./make.sh
 ```
 
