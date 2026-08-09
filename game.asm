@@ -17,7 +17,8 @@
 ;   $09 = sprite attr
 ;   $0A = tile temp
 ;   $0B,$0C = temp
-;   $0E = screen (0=menu, 1=opções)
+;   $0E = screen (0=menu, 1=opções, 2=fase intro)
+;   $17 = fase_intro_frame (contador de frames)
 ;   $0F = opt_row (0=vidas, 1=dificuldade, 2=sair)
 ;   $10 = lives_idx (0=10, 1=50, 2=100)
 ;   $11 = diff_idx  (0=fácil, 1=normal, 2=difícil)
@@ -57,7 +58,14 @@ nmi:
     LDA #$01
     STA $420B
 
+    LDA $0E
+    CMP #$02
+    BEQ nmi_phase_colors
     JSR ApplySelectionColors
+    BRA nmi_colors_done
+nmi_phase_colors:
+    JSR ApplyPhaseIntroColors
+nmi_colors_done:
 
 wait_joy:
     LDA $4212
@@ -128,7 +136,13 @@ MainLoop:
     STZ $03
 
     LDA $0E
-    BNE MainLoop_options
+    BEQ MainLoop_menu
+    CMP #$01
+    BEQ MainLoop_options
+    JSR UpdatePhaseIntro
+    BRA MainLoop
+
+MainLoop_menu:
     JSR UpdateMenu
     BRA MainLoop
 
@@ -167,6 +181,74 @@ SetupOptionsScreen:
     STZ $0F
     JSR BuildOptionsOAM
 
+    PLP
+    RTS
+
+
+;==============================================================================
+SetupPhaseIntro:
+    PHP
+    SEP #$20
+
+    LDA #$02
+    STA $0E
+    STZ $17
+
+; fundo amarelo (CGRAM color 0 = $7FE0)
+    STZ $2121
+    LDA #$E0
+    STA $2122
+    LDA #$7F
+    STA $2122
+
+; texto legível: preto na pal0 índice 1
+    LDA #$81
+    STA $2121
+    STZ $2122
+    STZ $2122
+
+    JSR BuildPhaseIntroOAM
+
+; só sprites (sem tilemap do título)
+    LDA #$10
+    STA $212C
+
+    LDA #$0F
+    STA $2100
+
+    PLP
+    RTS
+
+
+BuildPhaseIntroOAM:
+    PHP
+    SEP #$20
+    JSR ClearOAM
+
+    LDA #112
+    STA $06
+    LDA #104
+    STA $07
+    LDA #$20
+    STA $09
+    LDX.w #StrFase1
+    JSR DrawString
+
+    PLP
+    RTS
+
+
+UpdatePhaseIntro:
+    PHP
+    SEP #$20
+
+    INC $17
+    LDA $17
+    CMP #240
+    BCC UpdatePhaseIntro_done
+    JSR ClearOAM
+
+UpdatePhaseIntro_done:
     PLP
     RTS
 
@@ -230,14 +312,19 @@ UpdateMenu_rebuild:
     JSR BuildMenuOAM
 
 UpdateMenu_check_confirm:
-; A (bit7 de $4219) na opção OPÇÕES
+; A (bit7 de $4219)
     LDA $04
     BIT #$80
     BEQ UpdateMenu_done
     LDA $00
+    BEQ UpdateMenu_start_1p
     CMP #$02
     BNE UpdateMenu_done
     JSR SetupOptionsScreen
+    BRA UpdateMenu_done
+
+UpdateMenu_start_1p:
+    JSR SetupPhaseIntro
 
 UpdateMenu_done:
     PLP
@@ -522,6 +609,58 @@ ApplySelectionColors:
 
     PLP
     RTS
+
+
+ApplyPhaseIntroColors:
+    PHP
+    SEP #$20
+
+; mantém fundo amarelo
+    STZ $2121
+    LDA #$E0
+    STA $2122
+    LDA #$7F
+    STA $2122
+
+; texto: preto ou em fade (pal0 índice 1)
+    LDA #$81
+    STA $2121
+    LDA $17
+    CMP #180
+    BCC ApplyPhaseIntro_black
+    CMP #240
+    BCS ApplyPhaseIntro_yellow
+    SEC
+    SBC #180
+    LSR A
+    LSR A
+    TAX
+    LDA PhaseFadeLow,X
+    STA $2122
+    LDA PhaseFadeHigh,X
+    STA $2122
+    PLP
+    RTS
+
+ApplyPhaseIntro_black:
+    STZ $2122
+    STZ $2122
+    PLP
+    RTS
+
+ApplyPhaseIntro_yellow:
+    LDA #$E0
+    STA $2122
+    LDA #$7F
+    STA $2122
+    PLP
+    RTS
+
+
+PhaseFadeLow:
+    db $00,$10,$20,$30,$40,$50,$60,$70,$80,$90,$A0,$B0,$C0,$D0,$E0
+PhaseFadeHigh:
+    db $00,$08,$10,$18,$20,$28,$30,$38,$40,$48,$50,$58,$60,$68,$70,$7F
 
 
 ;==============================================================================
@@ -890,6 +1029,10 @@ DrawOptionsCursor:
     PLP
     RTS
 
+
+StrFase1:
+    db 38,33,51,37,0,17
+    db $FF
 
 ;--- Menu principal ---
 Str1P:
